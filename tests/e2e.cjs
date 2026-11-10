@@ -1,7 +1,8 @@
 /* End-to-end test against a running production build.
  * Usage: BASE_URL=http://localhost:3100 PASSCODE=... FIXTURES=dir OUT=dir node tests/e2e.cjs
  * Requires Playwright (preinstalled or `npm i -D playwright`). */
-const { chromium, devices } = require("playwright");
+/* eslint-disable @typescript-eslint/no-require-imports */
+const { chromium } = require("playwright");
 const path = require("path");
 const fs = require("fs");
 
