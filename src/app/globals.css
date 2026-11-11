@@ -1,0 +1,122 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #121212;
+  --color-surface: #181818;
+  --color-elevated: #242424;
+  --color-hover: #2a2a2a;
+  --color-muted: #a7a7a7;
+  --color-subtle: #6f6f6f;
+  --color-accent: #23d17c;
+  --color-accent-strong: #3be38f;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --animate-fade-in: fade-in 0.25s ease-out;
+  --animate-slide-up: slide-up 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+:root {
+  color-scheme: dark;
+  --player-h: 88px;
+  --mobile-nav-h: 0px;
+}
+
+@media (max-width: 767px) {
+  :root {
+    --player-h: 64px;
+    --mobile-nav-h: 60px;
+  }
+}
+
+html,
+body {
+  background: #000;
+  color: #fff;
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #4d4d4d transparent;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+/* Range inputs used for progress and volume */
+input[type="range"].slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--fill, #fff) 0%,
+    var(--fill, #fff) var(--pct, 0%),
+    #4d4d4d var(--pct, 0%),
+    #4d4d4d 100%
+  );
+  cursor: pointer;
+  outline: none;
+}
+input[type="range"].slider:hover,
+input[type="range"].slider:focus-visible {
+  --fill: var(--color-accent);
+}
+input[type="range"].slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #fff;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+input[type="range"].slider:hover::-webkit-slider-thumb,
+input[type="range"].slider:focus-visible::-webkit-slider-thumb {
+  opacity: 1;
+}
+input[type="range"].slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.equalizer span {
+  display: inline-block;
+  width: 3px;
+  margin-right: 1.5px;
+  background: var(--color-accent);
+  animation: eq 0.9s ease-in-out infinite;
+  transform-origin: bottom;
+}
+.equalizer span:nth-child(2) { animation-delay: -0.3s; }
+.equalizer span:nth-child(3) { animation-delay: -0.6s; }
+@keyframes eq {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

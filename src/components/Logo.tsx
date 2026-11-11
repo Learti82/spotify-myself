@@ -1,0 +1,22 @@
+export function LogoMark({ size = 32 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
+      <circle cx="32" cy="32" r="30" fill="#23d17c" />
+      <g fill="#0b0b0b">
+        <rect x="15" y="26" width="6" height="12" rx="3" />
+        <rect x="25" y="18" width="6" height="28" rx="3" />
+        <rect x="35" y="22" width="6" height="20" rx="3" />
+        <rect x="45" y="28" width="6" height="8" rx="3" />
+      </g>
+    </svg>
+  );
+}
+
+export function Logo() {
+  return (
+    <div className="flex items-center gap-2.5">
+      <LogoMark />
+      <span className="text-xl font-bold tracking-tight">Cadence</span>
+    </div>
+  );
+}

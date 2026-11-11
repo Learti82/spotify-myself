@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Type check, lint, build, end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+      APP_PASSCODE: ci-test-passcode
+      AUTH_SECRET: ci-only-not-a-real-secret
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Install ffmpeg and Playwright Chromium
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - name: Generate audio fixtures
+        run: tests/fixtures.sh "$RUNNER_TEMP/fixtures"
+
+      - name: Start production server
+        run: |
+          PORT=3100 npm start > "$RUNNER_TEMP/server.log" 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3100/login && exit 0
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/server.log"
+          exit 1
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+        env:
+          BASE_URL: http://localhost:3100
+          PASSCODE: ci-test-passcode
+          FIXTURES: ${{ runner.temp }}/fixtures
+          OUT: ${{ runner.temp }}/e2e-results
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: ${{ runner.temp }}/e2e-results
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Server log
+        if: failure()
+        run: cat "$RUNNER_TEMP/server.log" || true
