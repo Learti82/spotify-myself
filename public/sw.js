@@ -1,6 +1,6 @@
 /* Cadence service worker: caches the app shell so the app opens and plays
  * downloaded music with no network. Audio itself lives in IndexedDB. */
-const VERSION = "v1";
+const VERSION = "v2";
 const PAGES = `pages-${VERSION}`;
 const ASSETS = `assets-${VERSION}`;
 const RSC = `rsc-${VERSION}`;
@@ -32,6 +32,40 @@ async function cachePage(path, res) {
   await cacheAssetsFromHtml(html);
 }
 
+function rscKey(pathname, segment) {
+  return `${self.location.origin}${pathname}?__sw_rsc=${encodeURIComponent(segment)}`;
+}
+
+// Next.js names a route group's segment "!" + base64("(group)"); all pages live in "(main)".
+const MAIN_GROUP = `!${btoa("(main)").replace(/=+$/, "")}`;
+
+/**
+ * Fetch the client-side navigation data (route tree + page segment) for every
+ * section, so in-app navigation works offline even for sections never opened
+ * online. Without it, the first offline visit to such a section would fall back
+ * to a full page load, which stops the music.
+ */
+async function precacheNavigationData() {
+  const cache = await caches.open(RSC);
+  await Promise.all(
+    ROUTES.flatMap((route) => {
+      const page = route === "/" ? `/${MAIN_GROUP}/__PAGE__` : `/${MAIN_GROUP}${route}/__PAGE__`;
+      return ["/_tree", page].map(async (segment) => {
+        try {
+          const res = await fetch(route, {
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: { RSC: "1", "Next-Router-Prefetch": "1", "Next-Router-Segment-Prefetch": segment },
+          });
+          if (res.ok && (res.headers.get("content-type") || "").includes("text/x-component")) {
+            await cache.put(rscKey(route, segment), res);
+          }
+        } catch {}
+      });
+    }),
+  );
+}
+
 async function precache() {
   const assets = await caches.open(ASSETS);
   await Promise.all(STATIC.map((u) => assets.add(u).catch(() => {})));
@@ -41,6 +75,7 @@ async function precache() {
       await cachePage(route, res);
     } catch {}
   }
+  await precacheNavigationData();
 }
 
 self.addEventListener("install", (event) => {
@@ -119,7 +154,7 @@ self.addEventListener("fetch", (event) => {
   // query string: key by path + segment.
   if (request.headers.get("RSC") === "1" || url.searchParams.has("_rsc")) {
     const segment = request.headers.get("Next-Router-Segment-Prefetch") || (request.headers.get("Next-Router-Prefetch") ? "prefetch" : "full");
-    const key = `${url.origin}${url.pathname}?__sw_rsc=${encodeURIComponent(segment)}`;
+    const key = rscKey(url.pathname, segment);
     event.respondWith(
       (async () => {
         const cache = await caches.open(RSC);

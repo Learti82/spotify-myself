@@ -30,6 +30,17 @@ function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Polls an async in-page check. (page.waitForFunction treats a returned Promise as truthy.) */
+async function waitForAsync(pg, fn, arg, { timeout = 20000, message = "condition not met" } = {}) {
+  const end = Date.now() + timeout;
+  let last;
+  while (Date.now() < end) {
+    last = await pg.evaluate(fn, arg).catch(() => null);
+    if (last && last.ok) return last;
+    await sleep(500);
+  }
+  throw new Error(`${message}: ${JSON.stringify(last)}`);
+}
 
 (async () => {
   const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
@@ -333,12 +344,30 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("service worker caches the app shell", async () => {
     await page.goto(`${BASE}/`);
     await page.evaluate(() => navigator.serviceWorker.ready);
-    await page.waitForFunction(async () => {
-      const c = await caches.open("pages-v1");
-      return (await c.keys()).length >= 12;
-    }, null, { timeout: 30000 });
+    await waitForAsync(page, async () => {
+      const n = (await (await caches.open("pages-v2")).keys()).length;
+      return { ok: n >= 13, n };
+    }, null, { timeout: 30000, message: "page cache incomplete" });
     await page.reload();
     assert(await page.evaluate(() => !!navigator.serviceWorker.controller), "page not controlled by SW");
+  });
+  await step("navigation data for every section is cached, even with no links to it on screen", async () => {
+    // Fresh browser, empty library: the home page shows no album/artist/collection links,
+    // so only the explicit warm-up can have cached those sections.
+    // A separate browser process: contexts in one browser can share service-worker caches.
+    const isolated = await chromium.launch();
+    const p = await (await isolated.newContext()).newPage();
+    await p.goto(`${BASE}/login`);
+    await p.fill("#passcode", PASS);
+    await p.click("button:has-text('Unlock')");
+    await p.waitForURL(`${BASE}/`);
+    await p.getByText("Your library is empty").waitFor();
+    await waitForAsync(p, async () => {
+      const keys = (await (await caches.open("rsc-v2")).keys()).map((r) => new URL(r.url).pathname);
+      const all = ["/", "/search", "/library", "/playlists", "/playlist", "/liked", "/recent", "/offline", "/import", "/album", "/artist", "/collection", "/settings"];
+      const missing = all.filter((x) => !keys.includes(x));
+      return { ok: missing.length === 0, missing };
+    }, null, { timeout: 20000, message: "sections missing from the offline navigation cache" }).finally(() => isolated.close());
   });
   await step("app loads and plays with the network disabled", async () => {
     await context.setOffline(true);
@@ -359,6 +388,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.getByRole("link", { name: "Playlists", exact: true }).first().click();
     await page.getByRole("main").getByText("Road Trip").first().click();
     await page.getByRole("heading", { name: "Road Trip" }).waitFor({ timeout: 10000 });
+    // Album and artist pages were never opened online.
+    await page.getByRole("link", { name: "Your Library" }).first().click();
+    await page.waitForURL(/\/library/);
+    await page.locator('[data-testid="song-row"]:visible', { hasText: "Night Drive" }).getByRole("link", { name: "First Dawn" }).click();
+    await page.getByRole("heading", { name: "First Dawn" }).waitFor({ timeout: 10000 });
+    await page.getByRole("main").getByRole("link", { name: "Aurora Fields" }).first().click();
+    await page.getByRole("heading", { name: "Aurora Fields" }).waitFor({ timeout: 10000 });
     const a = await audio();
     assert(!a.paused && a.src === src, "audio stopped during offline navigation (page reloaded)");
   });
