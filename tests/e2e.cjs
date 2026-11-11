@@ -321,11 +321,32 @@ async function waitForAsync(pg, fn, arg, { timeout = 20000, message = "condition
     ]);
     const preview = await page.getByTestId("youtube-preview").count();
     console.log(`      (YouTube reachable from test env: ${preview ? "yes" : "no — error shown"})`);
-    if (preview) {
+  });
+  await step("YouTube: adding a video creates a streaming-only item", async () => {
+    // Mock the metadata lookup so this runs the same with or without access to YouTube.
+    await page.route("**/api/youtube?**", (r) =>
+      r.fulfill({
+        json: { id: "aqz-KE-bpKQ", title: "Big Buck Bunny", channel: "Blender", thumbnail: "https://i.ytimg.com/vi/aqz-KE-bpKQ/hqdefault.jpg", duration: 635, url: "https://www.youtube.com/watch?v=aqz-KE-bpKQ" },
+      }),
+    );
+    try {
+      await page.goto(`${BASE}/import?tab=youtube`);
+      await page.getByLabel("YouTube URL").fill("https://youtu.be/aqz-KE-bpKQ");
+      await page.getByRole("button", { name: "Look up" }).click();
+      await page.getByTestId("youtube-preview").waitFor();
       await page.getByRole("button", { name: "Add to YouTube collection" }).click();
+      // Wait for the save to finish before navigating (a full page load aborts pending IndexedDB writes).
+      await toast("Added to your YouTube collection").waitFor();
       await page.goto(`${BASE}/library?tab=youtube`);
-      await page.locator('[data-testid="song-row"]').first().waitFor();
-      assert((await page.locator('[data-testid="song-row"] [data-testid="offline-icon"]').count()) === 0, "YouTube item marked offline");
+      const row = page.locator('[data-testid="song-row"]:visible', { hasText: "Big Buck Bunny" });
+      await row.waitFor();
+      assert((await row.getByTitle(/Streams from YouTube/).count()) === 1, "YouTube badge missing");
+      assert((await row.locator('[data-testid="offline-icon"]').count()) === 0, "YouTube item marked offline");
+      await page.goto(`${BASE}/offline`);
+      await page.getByRole("heading", { name: "Offline Music" }).waitFor();
+      assert((await page.locator('[data-testid="song-row"]:visible', { hasText: "Big Buck Bunny" }).count()) === 0, "YouTube item listed in Offline Music");
+    } finally {
+      await page.unroute("**/api/youtube?**");
     }
   });
   await step("authorized download: YouTube and private hosts are refused", async () => {
